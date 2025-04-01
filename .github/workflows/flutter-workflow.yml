@@ -137,9 +137,6 @@ jobs:
 
       - name: Build IPA with ad-hoc export method
         run: |
-          cd ios
-          /usr/libexec/PlistBuddy -c "Add :ProvisioningStyle String Manual" Runner.xcodeproj/project.pbxproj
-          cd ..
           fvm flutter build ipa --release --build-number=${{ steps.get_version.outputs.build_number }} --export-options-plist=ios/ExportOptions.plist
 
       - name: Upload IPA to TestFlight
