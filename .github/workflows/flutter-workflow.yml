@@ -69,6 +69,28 @@ jobs:
       - name: Analyze code
         run: fvm flutter analyze
 
+      - name: Get current iOS version
+        id: get_version
+        run: |
+          # Extract version name and build number from Xcode project file
+          VERSION_NAME=$(grep -A 1 'MARKETING_VERSION' ios/Runner.xcodeproj/project.pbxproj | grep -v 'MARKETING_VERSION' | head -1 | sed -e 's/[^0-9.]//g')
+          BUILD_NUMBER=$(grep 'CURRENT_PROJECT_VERSION' ios/Runner.xcodeproj/project.pbxproj | head -1 | sed -e 's/[^0-9]//g')
+          NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "build_number=$NEW_BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION_NAME ($BUILD_NUMBER), New build number: $NEW_BUILD_NUMBER"
+
+      - name: Update build number
+        run: |
+          sed -i '' "s/version: [0-9.]*+[0-9]*/version: ${{ steps.get_version.outputs.version_name }}+${{ steps.get_version.outputs.build_number }}/" pubspec.yaml
+          cat pubspec.yaml | grep 'version:'
+
+      - name: Update iOS build number
+        run: |
+          cd ios
+          agvtool new-version -all ${{ steps.get_version.outputs.build_number }}
+          cd ..
+
       # For iOS, you'll need code signing set up for ad-hoc distribution
       - name: Setup code signing
         run: |
@@ -120,8 +142,18 @@ jobs:
           cd ios
           /usr/libexec/PlistBuddy -c "Add :ProvisioningStyle String Manual" Runner.xcodeproj/project.pbxproj
           cd ..
-          fvm flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+          fvm flutter build ipa --release --build-number=${{ steps.get_version.outputs.build_number }} --export-options-plist=ios/ExportOptions.plist
 
       - name: Upload IPA to TestFlight
         run: |
           xcrun altool --upload-app --type ios -f build/ios/ipa/*.ipa --apiKey ${{ secrets.APPLE_AUTH_KEY_ID }} --apiIssuer ${{ secrets.APPLE_AUTH_KEY_ISSUER_ID }}
+
+      - name: Commit version bump
+        if: github.event_name == 'push' && github.ref == 'refs/heads/manual'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add pubspec.yaml
+          git add ios/Runner.xcodeproj/project.pbxproj
+          git commit -m "Bump build number to ${{ steps.get_version.outputs.build_number }}" || echo "No changes to commit"
+          git push origin ${{ github.ref }}
