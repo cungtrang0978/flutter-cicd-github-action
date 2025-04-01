@@ -2,46 +2,46 @@ name: Flutter CI/CD for Android and iOS
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ manual ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ manual ]
 
 jobs:
   # Build and test for Android
-  build-android:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.29.x'
-          channel: 'stable'
-
-      # Create necessary configuration files
-      - name: Create key.properties
-        run: |
-          echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=../keystore.jks" >> android/key.properties
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Run tests
-        run: flutter test
-
-      - name: Build Android APK
-        run: flutter build apk --release
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+#  build-android:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v4
+#
+#      - name: Set up Flutter
+#        uses: subosito/flutter-action@v2
+#        with:
+#          flutter-version: '3.29.x'
+#          channel: 'stable'
+#
+#      # Create necessary configuration files
+#      - name: Create key.properties
+#        run: |
+#          echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
+#          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+#          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+#          echo "storeFile=../keystore.jks" >> android/key.properties
+#
+#      - name: Install dependencies
+#        run: flutter pub get
+#
+#      - name: Run tests
+#        run: flutter test
+#
+#      - name: Build Android APK
+#        run: flutter build apk --release
+#
+#      - name: Upload APK artifact
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: android-release
+#          path: build/app/outputs/flutter-apk/app-release.apk
 
   # Build for iOS
   build-ios:
@@ -72,15 +72,15 @@ jobs:
       # For iOS, you'll need code signing set up for ad-hoc distribution
       - name: Setup code signing
         run: |
-          echo '${{ secrets.APPLE_CERTIFICATE_BASE64 }}' | base64 --decode > certificate.p12
-          echo '${{ secrets.PROVISIONING_PROFILE_BASE64 }}' | base64 --decode > profile.mobileprovision
+          echo '${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}' | base64 --decode > certificate.p12
+          echo '${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}' | base64 --decode > profile.mobileprovision
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
           security create-keychain -p "" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
           security set-keychain-settings -lut 21600 build.keychain
-          security import certificate.p12 -k build.keychain -P "${{ secrets.CERTIFICATE_PASSWORD }}" -A -T /usr/bin/codesign
+          security import certificate.p12 -k build.keychain -P "${{ secrets.DISTRIBUTION_CERTIFICATE_PASSWORD }}" -A -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
 
       - name: Create ExportOptions.plist
@@ -90,19 +90,25 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
+              <key>compileBitcode</key>
+              <true/>
               <key>method</key>
-              <string>ad-hoc</string>
+              <string>app-store</string>
               <key>teamID</key>
               <string>${{ secrets.APPLE_TEAM_ID }}</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>com.example.flutterCicdGithubAction</key>
+                  <key>${{ secrets.APPLE_IDENTIFIER }}</key>
                   <string>${{ secrets.PROVISIONING_PROFILE_NAME }}</string>
               </dict>
               <key>signingCertificate</key>
               <string>Apple Distribution</string>
               <key>signingStyle</key>
               <string>manual</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>thinning</key>
+              <string>&lt;none&gt;</string>
           </dict>
           </plist>
           EOF
