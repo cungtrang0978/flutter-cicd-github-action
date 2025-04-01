@@ -64,10 +64,10 @@ jobs:
         run: fvm flutter pub get
 
       - name: Run tests
-        run: flutter test
+        run: fvm flutter test
 
       - name: Analyze code
-        run: flutter analyze
+        run: fvm flutter analyze
 
       # For iOS, you'll need code signing set up for ad-hoc distribution
       - name: Setup code signing
