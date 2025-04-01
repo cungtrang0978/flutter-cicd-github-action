@@ -1,5 +1,8 @@
 name: Flutter CI/CD for Android and iOS
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ manual ]
