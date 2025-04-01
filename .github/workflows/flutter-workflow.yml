@@ -73,26 +73,12 @@ jobs:
         id: get_version
         run: |
           # Extract version name and build number from Xcode project file
-          VERSION_NAME=$(grep -A 1 'MARKETING_VERSION' ios/Runner.xcodeproj/project.pbxproj | grep -v 'MARKETING_VERSION' | head -1 | sed -e 's/[^0-9.]//g')
+          VERSION_NAME=$(awk '/Release \*\/ \= \{/,/MARKETING_VERSION/' ios/Runner.xcodeproj/project.pbxproj | grep "MARKETING_VERSION" | sed -e 's/.*MARKETING_VERSION = \(.*\);.*/\1/' | tr -d '"' | tr -d ' ')
           BUILD_NUMBER=$(grep 'CURRENT_PROJECT_VERSION' ios/Runner.xcodeproj/project.pbxproj | head -1 | sed -e 's/[^0-9]//g')
           NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "build_number=$NEW_BUILD_NUMBER" >> $GITHUB_OUTPUT
           echo "Current version: $VERSION_NAME ($BUILD_NUMBER), New build number: $NEW_BUILD_NUMBER"
-
-      - name: Update build number
-        run: |
-          # Check the current version format first
-          echo "Current pubspec version:"
-          cat pubspec.yaml | grep 'version:'
-          
-          # Update version using a more reliable approach
-          VERSION_LINE=$(grep 'version:' pubspec.yaml)
-          NEW_VERSION="${{ steps.get_version.outputs.version_name }}+${{ steps.get_version.outputs.build_number }}"
-          sed -i '' "s|$VERSION_LINE|version: $NEW_VERSION|" pubspec.yaml
-
-          echo "Updated pubspec version:"
-          cat pubspec.yaml | grep 'version:'
 
       - name: Update iOS build number
         run: |
@@ -162,7 +148,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add pubspec.yaml
           git add ios/Runner.xcodeproj/project.pbxproj
           git commit -m "Bump build number to ${{ steps.get_version.outputs.build_number }}" || echo "No changes to commit"
           git push origin ${{ github.ref }}
