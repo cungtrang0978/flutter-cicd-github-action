@@ -9,6 +9,11 @@ pluginManagement {
 
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
+    run {
+        val properties = java.util.Properties()
+        file("key.properties").inputStream().use { properties.load(it) }
+    }
+
     repositories {
         google()
         mavenCentral()

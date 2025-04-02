@@ -17,20 +17,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # If you're using FVM (Flutter Version Management)
-      - name: Setup FVM
-        run: |
-          curl -fsSL https://fvm.app/install.sh | bash
-#          wget -O fvm.tar.gz https://github.com/leoafarias/fvm/releases/download/2.4.1/fvm-2.4.1-linux-x64.tar.gz
-#          mkdir -p $HOME/.fvm
-#          tar -xf fvm.tar.gz -C $HOME/.fvm
-#          echo "$HOME/.fvm/fvm/bin" >> $GITHUB_PATH
-#          export PATH="$HOME/fvm/fvm/bin:$PATH"
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+            ~/.gradle
+            ~/.android/build-cache
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/pubspec.lock', '**/build.gradle*') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
 
       - name: Install Flutter with FVM
         run: |
+          curl -fsSL https://fvm.app/install.sh | bash
           fvm install
-          fvm use --force
 
 #      - name: Add FVM Flutter to path
 #        run: |
@@ -44,7 +46,7 @@ jobs:
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=../keystore.jks" >> android/key.properties
-
+          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 --decode > android/keystore.jks
 
       - name: Get current Android version
         id: get_version
@@ -60,7 +62,7 @@ jobs:
       - name: Update Android build number
         run: |
           sed -i "s/versionCode = ${{ env.current_build_number }}/versionCode = ${{ env.new_build_number }}/" android/app/build.gradle.kts
-          echo "Updated Android build number from $BUILD_NUMBER to $NEW_BUILD_NUMBER"
+          echo "Updated Android build number from ${{ env.current_build_number }} to ${{ env.new_build_number }}"
 
       - name: Install dependencies
         run: fvm flutter pub get
@@ -80,108 +82,119 @@ jobs:
   #          name: android-release
   #          path: build/app/outputs/flutter-apk/app-release.apk
 
-  # Build for iOS
-#  build-ios:
-#    runs-on: macos-latest
-#    steps:
-#      - name: Checkout code
-#        uses: actions/checkout@v4
-#
-#      # If you're using FVM (Flutter Version Management)
-#      - name: Install FVM
-#        run: |
-#          brew tap leoafarias/fvm
-#          brew install fvm
-#          fvm install
-#
-#      #      - name: Create GoogleService-Info.plist
-#      #        run: echo '${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}' > ios/Runner/GoogleService-Info.plist
-#
-#      - name: Install dependencies
-#        run: fvm flutter pub get
-#
-#      - name: Run tests
-#        run: fvm flutter test
-#
-#      - name: Analyze code
-#        run: fvm flutter analyze
-#
-#      - name: Get current iOS version
-#        id: get_version
-#        run: |
-#          # Extract version name and build number from Xcode project file
-#          VERSION_NAME=$(awk '/Release \*\/ \= \{/,/MARKETING_VERSION/' ios/Runner.xcodeproj/project.pbxproj | grep "MARKETING_VERSION" | sed -e 's/.*MARKETING_VERSION = \(.*\);.*/\1/' | tr -d '"' | tr -d ' ')
-#          BUILD_NUMBER=$(grep 'CURRENT_PROJECT_VERSION' ios/Runner.xcodeproj/project.pbxproj | head -1 | sed -e 's/[^0-9]//g')
-#          NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
-#          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-#          echo "build_number=$NEW_BUILD_NUMBER" >> $GITHUB_OUTPUT
-#          echo "Current version: $VERSION_NAME ($BUILD_NUMBER), New build number: $NEW_BUILD_NUMBER"
-#
-#      - name: Update iOS build number
-#        run: |
-#          cd ios
-#          agvtool new-version -all ${{ steps.get_version.outputs.build_number }}
-#          cd ..
-#
-#      # For iOS, you'll need code signing set up for ad-hoc distribution
-#      - name: Setup code signing
-#        run: |
-#          echo '${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}' | base64 --decode > certificate.p12
-#          echo '${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}' | base64 --decode > profile.mobileprovision
-#          mkdir -p private_keys
-#          echo '${{ secrets.APPLE_AUTH_KEY_BASE64 }}' | base64 --decode > private_keys/AuthKey_${{ secrets.APPLE_AUTH_KEY_ID }}.p8
-#          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-#          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-#          security create-keychain -p "" build.keychain
-#          security default-keychain -s build.keychain
-#          security unlock-keychain -p "" build.keychain
-#          security set-keychain-settings -lut 21600 build.keychain
-#          security import certificate.p12 -k build.keychain -P "${{ secrets.DISTRIBUTION_CERTIFICATE_PASSWORD }}" -A -T /usr/bin/codesign
-#          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
-#
-#      - name: Create ExportOptions.plist
-#        run: |
-#          cat > ios/ExportOptions.plist << EOF
-#          <?xml version="1.0" encoding="UTF-8"?>
-#          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-#          <plist version="1.0">
-#          <dict>
-#              <key>compileBitcode</key>
-#              <true/>
-#              <key>method</key>
-#              <string>app-store</string>
-#              <key>teamID</key>
-#              <string>${{ secrets.APPLE_TEAM_ID }}</string>
-#              <key>provisioningProfiles</key>
-#              <dict>
-#                  <key>${{ secrets.APPLE_IDENTIFIER }}</key>
-#                  <string>${{ secrets.PROVISIONING_PROFILE_NAME }}</string>
-#              </dict>
-#              <key>signingCertificate</key>
-#              <string>Apple Distribution</string>
-#              <key>signingStyle</key>
-#              <string>manual</string>
-#              <key>stripSwiftSymbols</key>
-#              <true/>
-#              <key>thinning</key>
-#              <string>&lt;none&gt;</string>
-#          </dict>
-#          </plist>
-#          EOF
-#
-#      - name: Build IPA with ad-hoc export method
-#        run: |
-#          fvm flutter build ipa --release --build-number=${{ steps.get_version.outputs.build_number }} --export-options-plist=ios/ExportOptions.plist
-#
-#      - name: Upload IPA to TestFlight
-#        run: |
-#          xcrun altool --upload-app --type ios -f build/ios/ipa/*.ipa --apiKey ${{ secrets.APPLE_AUTH_KEY_ID }} --apiIssuer ${{ secrets.APPLE_AUTH_KEY_ISSUER_ID }}
-#
-#      - name: Commit version bump
-#        if: github.event_name == 'push' && github.ref == 'refs/heads/manual'
-#        run: |
-#          git config --local user.email "action@github.com"
-#          git config --local user.name "GitHub Action"
-#          git add ios/Runner.xcodeproj/project.pbxproj
-#          git commit -m "Bump build number to ${{ steps.get_version.outputs.build_number }}" || echo "No changes to commit"
-#          git push origin ${{ github.ref }}
+#   Build for iOS
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+           ~/.pub-cache
+            .dart_tool
+            ~/Library/Caches/CocoaPods
+            ios/Pods
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/pubspec.lock', '**/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install FVM
+        run: |
+          brew tap leoafarias/fvm
+          brew install fvm
+          fvm install
+
+      #      - name: Create GoogleService-Info.plist
+      #        run: echo '${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}' > ios/Runner/GoogleService-Info.plist
+
+      - name: Install dependencies
+        run: fvm flutter pub get
+
+      - name: Run tests
+        run: fvm flutter test
+
+      - name: Analyze code
+        run: fvm flutter analyze
+
+      - name: Get current iOS version
+        id: get_version
+        run: |
+          # Extract version name and build number from Xcode project file
+          VERSION_NAME=$(awk '/Release \*\/ \= \{/,/MARKETING_VERSION/' ios/Runner.xcodeproj/project.pbxproj | grep "MARKETING_VERSION" | sed -e 's/.*MARKETING_VERSION = \(.*\);.*/\1/' | tr -d '"' | tr -d ' ')
+          BUILD_NUMBER=$(grep 'CURRENT_PROJECT_VERSION' ios/Runner.xcodeproj/project.pbxproj | head -1 | sed -e 's/[^0-9]//g')
+          NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "build_number=$NEW_BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION_NAME ($BUILD_NUMBER), New build number: $NEW_BUILD_NUMBER"
+
+      - name: Update iOS build number
+        run: |
+          cd ios
+          agvtool new-version -all ${{ steps.get_version.outputs.build_number }}
+          cd ..
+
+      # For iOS, you'll need code signing set up for ad-hoc distribution
+      - name: Setup code signing
+        run: |
+          echo '${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}' | base64 --decode > certificate.p12
+          echo '${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}' | base64 --decode > profile.mobileprovision
+          mkdir -p private_keys
+          echo '${{ secrets.APPLE_AUTH_KEY_BASE64 }}' | base64 --decode > private_keys/AuthKey_${{ secrets.APPLE_AUTH_KEY_ID }}.p8
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security import certificate.p12 -k build.keychain -P "${{ secrets.DISTRIBUTION_CERTIFICATE_PASSWORD }}" -A -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+
+      - name: Create ExportOptions.plist
+        run: |
+          cat > ios/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>compileBitcode</key>
+              <true/>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>${{ secrets.APPLE_IDENTIFIER }}</key>
+                  <string>${{ secrets.PROVISIONING_PROFILE_NAME }}</string>
+              </dict>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>thinning</key>
+              <string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build IPA with ad-hoc export method
+        run: |
+          fvm flutter build ipa --release --build-number=${{ steps.get_version.outputs.build_number }} --export-options-plist=ios/ExportOptions.plist
+
+      - name: Upload IPA to TestFlight
+        run: |
+          xcrun altool --upload-app --type ios -f build/ios/ipa/*.ipa --apiKey ${{ secrets.APPLE_AUTH_KEY_ID }} --apiIssuer ${{ secrets.APPLE_AUTH_KEY_ISSUER_ID }}
+
+      - name: Commit version bump
+        if: github.event_name == 'push' && github.ref == 'refs/heads/manual'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add ios/Runner.xcodeproj/project.pbxproj
+          git commit -m "Bump build number to ${{ steps.get_version.outputs.build_number }}" || echo "No changes to commit"
+          git push origin ${{ github.ref }}
